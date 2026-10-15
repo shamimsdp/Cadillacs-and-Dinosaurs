@@ -1,0 +1,6 @@
+{
+  "name": "Cadillacs and Dinosaurs Arcade",
+  "description": "A faithful 1993 Capcom arcade beat 'em up clone of Cadillacs and Dinosaurs with 4 playable heroes, dinosaurs, weapons, and 2.5D combat.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

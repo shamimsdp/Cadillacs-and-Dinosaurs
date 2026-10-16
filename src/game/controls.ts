@@ -86,6 +86,15 @@ export class InputManager {
     this.virtualState.down = false;
   }
 
+  // Complete reset of all held inputs and virtual buttons
+  public reset() {
+    this.keys = {};
+    this.justPressedKeys = {};
+    this.virtualState = {};
+    this.virtualJustPressed = {};
+    this.doubleTapActive = false;
+  }
+
   // Poll current frame input state
   public poll(): InputState {
     // 1. Keyboard

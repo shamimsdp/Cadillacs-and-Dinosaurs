@@ -249,22 +249,31 @@ export class ArcadeSpriteRenderer {
       ctx.closePath();
       ctx.fill();
     } else if (char.id === 'mustapha') {
-      // Suspenders
-      ctx.strokeStyle = '#78350F';
-      ctx.lineWidth = 2.5;
+      // V-Neck Chest Opening
+      ctx.fillStyle = char.skinColor;
       ctx.beginPath();
-      ctx.moveTo(-bodyW / 4, torsoY);
-      ctx.lineTo(-bodyW / 4, torsoY + torsoH);
-      ctx.moveTo(bodyW / 4, torsoY);
-      ctx.lineTo(bodyW / 4, torsoY + torsoH);
+      ctx.moveTo(-4, torsoY);
+      ctx.lineTo(4, torsoY);
+      ctx.lineTo(0, torsoY + 9);
+      ctx.closePath();
+      ctx.fill();
+      // Button Placket & Buttons
+      ctx.strokeStyle = '#14532D';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, torsoY + 9);
+      ctx.lineTo(0, torsoY + torsoH);
       ctx.stroke();
+      ctx.fillStyle = '#14532D';
+      ctx.fillRect(-1.5, torsoY + 13, 3, 2);
+      ctx.fillRect(-1.5, torsoY + 20, 3, 2);
     }
 
     // Belt
     ctx.fillStyle = '#451A03';
     ctx.fillRect(-bodyW / 2, -34, bodyW, 5);
-    ctx.fillStyle = '#F59E0B';
-    ctx.fillRect(-3, -34, 6, 5); // Buckle
+    ctx.fillStyle = char.id === 'mustapha' ? '#E2E8F0' : '#F59E0B'; // Silver chrome buckle for Mustapha
+    ctx.fillRect(-3.5, -34, 7, 5); // Buckle
 
     // 3. Head & Hair / Cap
     const headSize = (isMess ? 16 : 14) * scale;
@@ -280,7 +289,25 @@ export class ArcadeSpriteRenderer {
     ctx.stroke();
 
     // Hair / Cap
-    if (char.id === 'mustapha' || char.id === 'jack') {
+    if (char.id === 'mustapha') {
+      // Mustapha 6-panel pale khaki baseball cap with curved forest-green visor
+      ctx.fillStyle = '#F2DF9F'; // Pale Khaki crown
+      ctx.strokeStyle = '#0F172A';
+      ctx.beginPath();
+      ctx.ellipse(0, headY + 3, headSize / 2 + 2, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Forest green curved visor
+      ctx.fillStyle = '#1E5428';
+      ctx.fillRect(2, headY + 4, 9, 3);
+      // Circular green front patch
+      ctx.fillStyle = '#14532D';
+      ctx.fillRect(-2, headY + 1, 4, 3);
+      // Trimmed Mustache & Goatee
+      ctx.fillStyle = '#110C0A';
+      ctx.fillRect(1, headY + headSize / 2 + 2, 5, 2); // Mustache
+      ctx.fillRect(2, headY + headSize / 2 + 5, 3, 2); // Goatee
+    } else if (char.id === 'jack') {
       // Flat mechanic cap with visor
       ctx.fillStyle = char.accentColor;
       ctx.strokeStyle = '#0F172A';

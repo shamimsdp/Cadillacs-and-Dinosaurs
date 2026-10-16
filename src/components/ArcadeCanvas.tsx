@@ -24,6 +24,10 @@ export const ArcadeCanvas: React.FC<ArcadeCanvasProps> = ({
   const animFrameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(performance.now());
   const stateUpdateCounterRef = useRef<number>(0);
+  const onStateChangeRef = useRef(onStateChange);
+  useEffect(() => {
+    onStateChangeRef.current = onStateChange;
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -42,8 +46,8 @@ export const ArcadeCanvas: React.FC<ArcadeCanvasProps> = ({
 
       const rawDt = (currentTime - lastTimeRef.current) / 1000;
       lastTimeRef.current = currentTime;
-      // Clamp frame delta time to 50ms to prevent spiral of death
-      const dt = Math.min(rawDt, 0.05);
+      // Clamp frame delta time between 1ms and 50ms to prevent hanging on tab-switches or 0-deltas
+      const dt = Math.max(0.001, Math.min(isNaN(rawDt) ? 0.016 : rawDt, 0.05));
 
       // Poll inputs
       const input = inputManager.poll();
@@ -131,8 +135,8 @@ export const ArcadeCanvas: React.FC<ArcadeCanvasProps> = ({
 
       // Periodically trigger light React state sync (every ~4 frames)
       stateUpdateCounterRef.current++;
-      if (stateUpdateCounterRef.current % 4 === 0 && onStateChange) {
-        onStateChange();
+      if (stateUpdateCounterRef.current % 4 === 0 && onStateChangeRef.current) {
+        onStateChangeRef.current();
       }
 
       animFrameRef.current = requestAnimationFrame(gameLoop);
@@ -146,7 +150,7 @@ export const ArcadeCanvas: React.FC<ArcadeCanvasProps> = ({
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [engine, onStateChange]);
+  }, [engine]);
 
   return (
     <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden select-none">

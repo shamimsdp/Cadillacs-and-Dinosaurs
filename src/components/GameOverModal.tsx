@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { GameEngine } from '../game/engine';
 import { arcadeAudio } from '../game/audio';
+import { HeroPortrait } from './HeroPortrait';
 
 interface GameOverModalProps {
   engine: GameEngine;
@@ -55,9 +56,17 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             <div className="text-yellow-400 text-sm font-bold tracking-widest uppercase mb-1">
               STAGE 1 CLEAR !
             </div>
-            <h2 className="text-3xl font-black text-amber-400 tracking-wider mb-4 drop-shadow font-sans">
+            <h2 className="text-3xl font-black text-amber-400 tracking-wider mb-3 drop-shadow font-sans">
               VICE TERHUNE DEFEATED
             </h2>
+
+            <div className="flex items-center gap-3 mb-4 bg-black/60 p-2 rounded-md border border-amber-500/50">
+              <HeroPortrait charId={engine.player.charId} size={52} className="rounded-xs" />
+              <div className="text-left">
+                <div className="text-xs text-yellow-300 font-bold uppercase">{engine.player.charId.toUpperCase()}</div>
+                <div className="text-[11px] text-zinc-300">VICTORIOUS SURVIVOR</div>
+              </div>
+            </div>
 
             <div className="text-zinc-300 text-xs font-sans mb-6 leading-relaxed">
               You freed the captive velociraptors and halted the poacher operation across the ruined city! The Cadillac is revved up and roaring into the wild!
@@ -69,6 +78,12 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                 <span className="text-zinc-400">FINAL SCORE</span>
                 <span className="text-yellow-400 font-bold text-sm tabular-nums">
                   {engine.player.score.toString().padStart(6, '0')}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400">MAX HIT COMBO</span>
+                <span className="text-amber-400 font-bold tabular-nums">
+                  {engine.maxHitCombo} HITS
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -110,8 +125,11 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                 <h2 className="text-2xl font-black text-yellow-400 tracking-wider mb-2 font-sans">
                   CONTINUE ?
                 </h2>
+                <div className="flex items-center justify-center my-1">
+                  <HeroPortrait charId={engine.player.charId} size={56} className="rounded-xs border-amber-400" />
+                </div>
                 {/* Big Giant Retro Arcade Digit */}
-                <div className="text-7xl font-black text-amber-500 my-4 drop-shadow-[0_0_15px_rgba(245,158,11,0.8)] animate-pulse">
+                <div className="text-7xl font-black text-amber-500 my-2 drop-shadow-[0_0_15px_rgba(245,158,11,0.8)] animate-pulse">
                   {continueTimer}
                 </div>
 
@@ -153,8 +171,21 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                 <h2 className="text-3xl font-black text-red-500 tracking-wider mb-4 font-sans">
                   TIME OVER
                 </h2>
-                <div className="text-xs text-zinc-400 mb-6">
-                  FINAL SCORE: {engine.player.score.toString().padStart(6, '0')}
+                <div className="flex flex-col gap-1 text-xs text-zinc-400 mb-6">
+                  <div>
+                    FINAL SCORE:{' '}
+                    <span className="text-yellow-400 font-bold tabular-nums">
+                      {engine.player.score.toString().padStart(6, '0')}
+                    </span>
+                  </div>
+                  {engine.maxHitCombo > 1 && (
+                    <div>
+                      MAX HIT COMBO:{' '}
+                      <span className="text-amber-400 font-bold tabular-nums">
+                        {engine.maxHitCombo} HITS
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-3 w-full">
                   <button

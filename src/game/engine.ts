@@ -5,6 +5,7 @@
 
 import { arcadeAudio } from './audio';
 import { CHARACTERS } from './characters';
+import { inputManager } from './controls';
 import {
   ActionState,
   CharacterId,
@@ -38,10 +39,19 @@ export class GameEngine {
 
   public hitstopTimer: number = 0; // Freeze frame on heavy impacts
   public screenShake: number = 0;
+  public screenShakeMax: number = 0;
+  public screenShakeDuration: number = 0;
+  public screenShakeTimer: number = 0;
   public goPromptTimer: number = 0;
   public lockedCamera: boolean = false;
   public sectionIndex: number = 0;
   public targetBoss: EnemyEntity | null = null;
+
+  // Real-time Hit Combo Counter
+  public hitCombo: number = 0;
+  public hitComboTimer: number = 0;
+  public hitComboTotalDamage: number = 0;
+  public maxHitCombo: number = 0;
 
   // Wave definitions along the stage
   private waveCheckpoints = [
@@ -54,6 +64,18 @@ export class GameEngine {
   constructor(charId: CharacterId = 'mustapha') {
     this.player = this.createPlayer(charId);
     this.initPropsAndItems();
+  }
+
+  /**
+   * Triggers camera shake with customizable intensity and duration
+   * @param intensity Max displacement in pixels
+   * @param duration Duration of shake in seconds
+   */
+  public triggerScreenShake(intensity: number, duration: number = 0.3) {
+    this.screenShakeMax = Math.max(this.screenShakeMax, intensity);
+    this.screenShakeDuration = Math.max(this.screenShakeDuration, duration);
+    this.screenShakeTimer = Math.max(this.screenShakeTimer, duration);
+    this.screenShake = this.screenShakeMax;
   }
 
   public reset(charId?: CharacterId) {
@@ -73,8 +95,16 @@ export class GameEngine {
     this.isVictory = false;
     this.hitstopTimer = 0;
     this.screenShake = 0;
+    this.screenShakeMax = 0;
+    this.screenShakeDuration = 0;
+    this.screenShakeTimer = 0;
+    this.hitCombo = 0;
+    this.hitComboTimer = 0;
+    this.hitComboTotalDamage = 0;
+    this.maxHitCombo = 0;
     this.lockedCamera = false;
     this.targetBoss = null;
+    inputManager.reset();
 
     // Reset checkpoints
     this.waveCheckpoints.forEach((wp) => (wp.triggered = false));
@@ -109,6 +139,7 @@ export class GameEngine {
       lives: 2,
       kills: 0,
       dinosPacified: 0,
+      respawnTimer: 0,
     };
   }
 
@@ -135,15 +166,42 @@ export class GameEngine {
   public update(dt: number, input: InputState) {
     if (this.isPaused || this.isGameOver || this.isVictory) return;
 
-    // Simulation Hitstop (Impact Freeze-frame)
+    // Ensure valid dt
+    const safeDt = Math.max(0.001, Math.min(isNaN(dt) ? 0.016 : dt, 0.05));
+
+    // Simulation Hitstop (Impact Freeze-frame) - safely ticks down
     if (this.hitstopTimer > 0) {
-      this.hitstopTimer -= dt;
+      this.hitstopTimer = Math.max(0, this.hitstopTimer - safeDt);
+      // Still decay screen shake while in hitstop
+      if (this.screenShakeTimer > 0) {
+        this.screenShakeTimer = Math.max(0, this.screenShakeTimer - safeDt);
+        const ratio = Math.max(0, this.screenShakeTimer / Math.max(0.01, this.screenShakeDuration));
+        this.screenShake = this.screenShakeMax * ratio;
+      }
       return;
     }
 
-    // Camera Shake Decay
-    if (this.screenShake > 0) {
-      this.screenShake = Math.max(0, this.screenShake - dt * 25);
+    // Camera Shake Decay with duration-based smoothing
+    if (this.screenShakeTimer > 0) {
+      this.screenShakeTimer -= safeDt;
+      const ratio = Math.max(0, this.screenShakeTimer / Math.max(0.01, this.screenShakeDuration));
+      this.screenShake = this.screenShakeMax * ratio;
+      if (this.screenShakeTimer <= 0) {
+        this.screenShake = 0;
+        this.screenShakeMax = 0;
+        this.screenShakeDuration = 0;
+      }
+    } else {
+      this.screenShake = 0;
+    }
+
+    // Real-time Hit Combo Decay
+    if (this.hitComboTimer > 0) {
+      this.hitComboTimer -= safeDt;
+      if (this.hitComboTimer <= 0) {
+        this.hitCombo = 0;
+        this.hitComboTotalDamage = 0;
+      }
     }
 
     // Checkpoint Triggering
@@ -158,30 +216,33 @@ export class GameEngine {
     }
 
     // Check if wave cleared to unlock camera and trigger "GO! ->"
-    if (this.lockedCamera && this.enemies.length === 0) {
+    // Checks that all enemies are cleared or defeated (hp <= 0)
+    const activeEnemies = this.enemies.filter((e) => e.hp > 0);
+    if (this.lockedCamera && activeEnemies.length === 0) {
       this.lockedCamera = false;
+      this.enemies = []; // Purge any remaining dead records to avoid ghost traps
       this.goPromptTimer = 3.5;
       arcadeAudio.playGoPrompt();
     }
 
     if (this.goPromptTimer > 0) {
-      this.goPromptTimer -= dt;
+      this.goPromptTimer -= safeDt;
     }
 
     // Update Player
-    this.updatePlayer(dt, input);
+    this.updatePlayer(safeDt, input);
 
-    // Update Enemies
-    this.updateEnemies(dt);
+    // Update Enemies (consistently with safeDt to prevent NaN or huge dt hanging)
+    this.updateEnemies(safeDt);
 
     // Update Projectiles
-    this.updateProjectiles(dt);
+    this.updateProjectiles(safeDt);
 
     // Update Items
-    this.updateItems(dt);
+    this.updateItems(safeDt);
 
     // Update Particles
-    this.updateParticles(dt);
+    this.updateParticles(safeDt);
 
     // Camera Follow Clamped
     this.updateCamera();
@@ -199,8 +260,24 @@ export class GameEngine {
       if (p.comboResetTimer <= 0) p.comboCount = 0;
     }
 
+    // In-simulation Respawn handling
+    if (p.respawnTimer > 0) {
+      p.respawnTimer -= dt;
+      if (p.respawnTimer <= 0) {
+        if (p.lives >= 0 && !this.isGameOver) {
+          p.hp = p.maxHp;
+          p.invincibleTimer = 2.5;
+          p.state = 'idle';
+          p.stateTimer = 0;
+          p.y = 0;
+          p.vy = 0;
+          this.spawnComicText(p.x, p.z - 50, '1 UP!');
+        }
+      }
+    }
+
     // State Machine
-    const canMove = ['idle', 'walk', 'dash'].includes(p.state) && p.hitstunTimer <= 0;
+    const canMove = ['idle', 'walk', 'dash'].includes(p.state) && p.hitstunTimer <= 0 && p.hp > 0;
 
     if (canMove) {
       // Movement
@@ -276,7 +353,7 @@ export class GameEngine {
           }
         }
       }
-    } else if (['punch1', 'punch2', 'punch3', 'punchFinish', 'dashAttack', 'shoot'].includes(p.state)) {
+    } else if (['punch1', 'punch2', 'punch3', 'punchFinish', 'dashAttack', 'shoot', 'throw', 'attack'].includes(p.state)) {
       p.stateTimer -= dt;
       p.vx *= 0.85;
       p.vz *= 0.85;
@@ -318,10 +395,18 @@ export class GameEngine {
       p.vy += -600 * dt;
       p.y = Math.max(0, p.y + p.vy * dt);
       p.vx *= 0.92;
-      if (p.stateTimer <= 0 && p.y === 0) {
-        p.state = 'getup';
-        p.stateTimer = 0.4;
-        p.invincibleTimer = 1.2;
+      if (p.stateTimer <= 0 && p.y <= 0) {
+        p.y = 0;
+        p.vy = 0;
+        if (p.hp <= 0 && p.lives >= 0) {
+          // Waiting for respawn timer to trigger 1-UP
+          p.state = 'knockdown';
+          p.stateTimer = 0.5;
+        } else if (p.hp > 0) {
+          p.state = 'getup';
+          p.stateTimer = 0.4;
+          p.invincibleTimer = 1.2;
+        }
       }
     } else if (p.state === 'getup') {
       p.stateTimer -= dt;
@@ -386,7 +471,7 @@ export class GameEngine {
     p.stateTimer = type === 'uzi' ? 0.12 : 0.25;
 
     arcadeAudio.playGunshot(type as 'pistol' | 'shotgun' | 'uzi');
-    this.screenShake = type === 'shotgun' ? 8 : 3;
+    this.triggerScreenShake(type === 'shotgun' ? 12 : type === 'uzi' ? 3 : 6, type === 'shotgun' ? 0.35 : 0.18);
 
     // Spawn Projectile
     const bulletSpeed = 650 * p.facing;
@@ -455,6 +540,7 @@ export class GameEngine {
     p.stateTimer = 0.4;
     p.vx = p.facing * 260;
     arcadeAudio.playPunch(true);
+    this.triggerScreenShake(9, 0.3);
     this.checkAttackCollision(p, 50, 24, 25, true);
     this.spawnDust(p.x, p.z);
   }
@@ -470,10 +556,11 @@ export class GameEngine {
     p.state = 'special';
     p.stateTimer = 0.55;
     p.invincibleTimer = 0.65;
-    this.screenShake = 10;
     this.hitstopTimer = 0.05;
 
     arcadeAudio.playSpecial();
+    // Character special move initial burst shake
+    this.triggerScreenShake(12, 0.4);
 
     // Shockwave particle
     this.particles.push({
@@ -497,9 +584,12 @@ export class GameEngine {
       }
     }
 
-    // Health sacrifice on connect
-    if (didHit && p.hp > 10) {
-      p.hp = Math.max(1, p.hp - CHARACTERS[p.charId].specialCost);
+    // Health sacrifice and massive finisher shake on connect
+    if (didHit) {
+      this.triggerScreenShake(18, 0.55);
+      if (p.hp > 10) {
+        p.hp = Math.max(1, p.hp - CHARACTERS[p.charId].specialCost);
+      }
     }
   }
 
@@ -509,7 +599,7 @@ export class GameEngine {
     p.grabbedTargetId = null;
 
     arcadeAudio.playKnockdown();
-    this.screenShake = 6;
+    this.triggerScreenShake(12, 0.4);
     this.hitstopTimer = 0.04;
 
     const throwDir = -p.facing;
@@ -584,7 +674,9 @@ export class GameEngine {
 
     if (hitAny) {
       this.hitstopTimer = isKnockdown ? 0.06 : 0.03;
-      this.screenShake = isKnockdown ? 5 : 2;
+      if (isKnockdown) {
+        this.triggerScreenShake(7, 0.25);
+      }
     }
   }
 
@@ -594,6 +686,7 @@ export class GameEngine {
       if (Math.abs(prop.x - x) < radius && Math.abs(prop.z - z) < radius) {
         prop.hp -= damage;
         arcadeAudio.playBarrelBreak();
+        this.triggerScreenShake(6, 0.2);
         // Wood splinter particles
         for (let s = 0; s < 6; s++) {
           this.particles.push({
@@ -632,10 +725,42 @@ export class GameEngine {
     enemy.hp -= damage;
     enemy.hitstunTimer = 0.28;
 
+    // Real-time Hit Combo Tracking
+    if (this.hitComboTimer > 0) {
+      this.hitCombo++;
+      this.hitComboTotalDamage += damage;
+    } else {
+      this.hitCombo = 1;
+      this.hitComboTotalDamage = damage;
+    }
+    this.hitComboTimer = 2.0; // 2.0s window for rapid succession hits
+    this.maxHitCombo = Math.max(this.maxHitCombo, this.hitCombo);
+
+    // Dynamic arcade score bonus on combos
+    if (this.hitCombo >= 2) {
+      const comboBonus = Math.floor(damage * 0.25 * this.hitCombo);
+      this.player.score += comboBonus;
+      // Show combo milestone floating comic text every 5 hits
+      if (this.hitCombo % 5 === 0) {
+        this.spawnComicText(enemy.x, enemy.z - 65, `${this.hitCombo} HITS!`);
+      }
+    }
+
+    // High-impact boss hits & knockdown screen shake
+    if (enemy.enemyType === 'vice_boss') {
+      if (isKnockdown) {
+        this.triggerScreenShake(16, 0.45);
+      } else {
+        this.triggerScreenShake(7, 0.25);
+      }
+    } else if (isKnockdown) {
+      this.triggerScreenShake(6, 0.22);
+    }
+
     // Sparks & Comic Text
     this.spawnHitspark(enemy.x, enemy.z - 35, isKnockdown);
 
-    if (isKnockdown) {
+    if (enemy.hp <= 0 || isKnockdown) {
       enemy.state = 'knockdown';
       enemy.stateTimer = 0.9;
       enemy.vx = knockDir * 240;
@@ -652,6 +777,7 @@ export class GameEngine {
       enemy.enraged = true;
       enemy.aiState = 'enraged';
       arcadeAudio.playDinoRoar(true);
+      this.triggerScreenShake(10, 0.4);
       this.spawnComicText(enemy.x, enemy.z - 50, 'ENRAGED!');
     }
 
@@ -664,7 +790,7 @@ export class GameEngine {
       }
       if (enemy.enemyType === 'vice_boss') {
         this.isVictory = true;
-        this.screenShake = 15;
+        this.triggerScreenShake(24, 0.85);
       }
     }
   }
@@ -737,27 +863,29 @@ export class GameEngine {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
 
-      // Dead removal after knockdown settles
-      if (e.hp <= 0 && e.state === 'knockdown' && e.stateTimer <= 0.1) {
-        this.spawnDust(e.x, e.z);
-        // Possible item drop
-        if (Math.random() < 0.35) {
-          const drops: WeaponType[] = ['food_burger', 'knife', 'treasure_gem', 'pistol'];
-          const dropType = drops[Math.floor(Math.random() * drops.length)];
-          this.items.push({
-            id: 'item_drop_' + Math.random(),
-            type: dropType,
-            x: e.x,
-            z: e.z,
-            y: 10,
-            vy: 60,
-            ammo: 6,
-            isFood: dropType.startsWith('food_'),
-            isTreasure: dropType.startsWith('treasure_'),
-          });
+      // Dead removal: any enemy with hp <= 0 that finished falling or whose stateTimer expired
+      if (e.hp <= 0) {
+        if ((e.state === 'knockdown' && e.stateTimer <= 0.1) || e.state === 'idle' || e.stateTimer <= 0) {
+          this.spawnDust(e.x, e.z);
+          // Possible item drop
+          if (Math.random() < 0.35) {
+            const drops: WeaponType[] = ['food_burger', 'knife', 'treasure_gem', 'pistol'];
+            const dropType = drops[Math.floor(Math.random() * drops.length)];
+            this.items.push({
+              id: 'item_drop_' + Math.random(),
+              type: dropType,
+              x: e.x,
+              z: e.z,
+              y: 10,
+              vy: 60,
+              ammo: 6,
+              isFood: dropType.startsWith('food_'),
+              isTreasure: dropType.startsWith('treasure_'),
+            });
+          }
+          this.enemies.splice(i, 1);
+          continue;
         }
-        this.enemies.splice(i, 1);
-        continue;
       }
 
       // Physics integration
@@ -775,7 +903,9 @@ export class GameEngine {
       if (e.state === 'knockdown') {
         e.stateTimer -= dt;
         e.vx *= 0.92;
-        if (e.stateTimer <= 0 && e.y === 0 && e.hp > 0) {
+        if (e.stateTimer <= 0 && e.y <= 0 && e.hp > 0) {
+          e.y = 0;
+          e.vy = 0;
           e.state = 'getup';
           e.stateTimer = 0.4;
           e.invincibleTimer = 0.8;
@@ -826,7 +956,11 @@ export class GameEngine {
         e.vz = 0;
 
         // Perform attack against player
-        this.damagePlayer(e.enemyType === 'vice_boss' ? 24 : e.enemyType === 'raptor' ? 20 : 12, e.facing);
+        this.damagePlayer(
+          e.enemyType === 'vice_boss' ? 24 : e.enemyType === 'raptor' ? 20 : 12,
+          e.facing,
+          e.enemyType === 'vice_boss'
+        );
       } else {
         // Move towards player or flank along Z
         const targetZ = p.z + (Math.sin(e.id.charCodeAt(6) || 1) > 0 ? 12 : -12);
@@ -846,13 +980,17 @@ export class GameEngine {
     }
   }
 
-  private damagePlayer(damage: number, knockDir: number) {
+  private damagePlayer(damage: number, knockDir: number, isBoss: boolean = false) {
     const p = this.player;
     if (p.invincibleTimer > 0 || p.state === 'special' || p.hp <= 0) return;
 
     p.hp -= damage;
     p.hitstunTimer = 0.3;
-    this.screenShake = 6;
+    if (isBoss) {
+      this.triggerScreenShake(15, 0.45);
+    } else {
+      this.triggerScreenShake(7, 0.25);
+    }
     arcadeAudio.playPunch(true);
     this.spawnHitspark(p.x, p.z - 30, true);
 
@@ -867,15 +1005,8 @@ export class GameEngine {
       if (p.lives < 0) {
         this.isGameOver = true;
       } else {
-        // Respawn life after knockdown
-        setTimeout(() => {
-          if (p.lives >= 0 && !this.isGameOver) {
-            p.hp = p.maxHp;
-            p.invincibleTimer = 2.5;
-            p.state = 'idle';
-            this.spawnComicText(p.x, p.z - 50, '1 UP!');
-          }
-        }, 1400);
+        // In-simulation respawn timer
+        p.respawnTimer = 1.4;
       }
     } else {
       p.state = 'hurt';

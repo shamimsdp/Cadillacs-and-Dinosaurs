@@ -16,6 +16,7 @@ interface OptionsModalProps {
   onToggleTouchControls: () => void;
   isMuted: boolean;
   onToggleMute: () => void;
+  onOpen3DViewer?: () => void;
 }
 
 export const OptionsModal: React.FC<OptionsModalProps> = ({
@@ -29,6 +30,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   onToggleTouchControls,
   isMuted,
   onToggleMute,
+  onOpen3DViewer,
 }) => {
   if (!isOpen) return null;
 
@@ -95,6 +97,14 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-2 pt-2 border-t border-zinc-800">
+          {onOpen3DViewer && (
+            <button
+              onClick={onOpen3DViewer}
+              className="w-full py-2 bg-gradient-to-r from-amber-500/20 via-yellow-500/30 to-amber-500/20 text-yellow-300 hover:text-white border border-amber-500/60 font-bold text-xs rounded-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>🌐</span> INSPECT 3D CHARACTER ROSTER & DINOS
+            </button>
+          )}
           <button
             onClick={onClose}
             className="w-full py-2.5 bg-yellow-400 hover:bg-yellow-300 text-black font-extrabold text-xs rounded-xs active:scale-95 transition-transform cursor-pointer"

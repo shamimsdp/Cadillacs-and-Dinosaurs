@@ -107,6 +107,7 @@ export interface PlayerEntity extends Entity {
   lives: number;
   kills: number;
   dinosPacified: number;
+  respawnTimer: number;
 }
 
 export interface EnemyEntity extends Entity {

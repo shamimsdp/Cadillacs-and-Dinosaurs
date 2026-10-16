@@ -19,11 +19,11 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     specialCost: 8,
     specialName: 'Tornado Windmill Kick',
     portraitColor: '#EAB308',
-    shirtColor: '#16A34A', // Green long sleeve
-    pantsColor: '#EAB308', // Yellow pants
-    accentColor: '#CA8A04', // Cap & suspenders
-    skinColor: '#8D5B4C', // Brown skin
-    hairColor: '#1F2937',
+    shirtColor: '#36723A', // Olive green safari shirt
+    pantsColor: '#DEB43E', // Mustard yellow combat pants
+    accentColor: '#653A1C', // Saddle brown boots & belt
+    skinColor: '#BD7D48', // Warm tanned bronze skin
+    hairColor: '#140E0C', // Black hair & mustache
   },
   jack: {
     id: 'jack',
